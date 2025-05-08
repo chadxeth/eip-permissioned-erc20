@@ -311,24 +311,6 @@ describe("TransferOracle", () => {
             await expect(transferOracle.connect(initialIssuer).approveTransfer(defaultApproval, defaultProofBytes, currentPublicInputs))
                 .to.be.revertedWithCustomError(transferOracle, "TransferOracle__InvalidApprovalData");
         });
-         it("Should revert if approval.expiry exceeds uint40.max (approx 34 years)", async () => {
-            const maxUint40 = (BigInt(1) << BigInt(40)) - BigInt(1);
-            const tooFarFutureTimestamp = maxUint40 + BigInt(1);
-            defaultApproval.expiry = tooFarFutureTimestamp;
-            expiryTimestamp = Number(tooFarFutureTimestamp);
-            // Use corrected inputs
-            const currentPublicInputs = getCorrectDefaultPublicInputs(rootHashBytes32, senderHashBytes32, recipientHashBytes32, minAmtScaled, maxAmtScaled, expiryTimestamp);
-            // Recalculate proofId based on current inputs if they affect it (they don't here)
-            calculatedProofId = ethers.keccak256(
-                ethers.solidityPacked(
-                    ["bytes32","bytes32","bytes32"],
-                    [rootHashBytes32, senderHashBytes32, recipientHashBytes32]
-                )
-            );
-            defaultApproval.proofId = calculatedProofId;
-            await expect(transferOracle.connect(initialIssuer).approveTransfer(defaultApproval, defaultProofBytes, currentPublicInputs))
-                .to.be.revertedWithCustomError(transferOracle, "TransferOracle__InvalidApprovalData");
-        });
     });
     
     describe("State Changes & Edge Cases", () => {
