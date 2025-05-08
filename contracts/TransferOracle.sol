@@ -58,30 +58,13 @@ contract TransferOracle is ITransferOracle, Ownable, ReentrancyGuard {
     address public immutable issuer;
 
     /**
-     * @dev Internal struct optimized for storage packing.
-     *      We use uint128 for amounts assuming token decimals <= 38 (fits in 128 bits).
-     *      Total struct size: 32 (sender) + 32 (recipient) + 16 (min) + 16 (max) + 8 (expiry) + 32 (proofId) = 136 bytes.
-     *      Packs into 5 storage slots (32 * 5 = 160 bytes).
-     *      NOTE: senderHash and recipientHash from TransferApproval are NOT stored here.
-     *            They are only used for validation during approveTransfer.
-     */
-    struct ApprovalStorage {
-        address sender;
-        address recipient;
-        uint128 minAmt;     // Stores min amount, potentially from uint256 approval.minAmt
-        uint128 maxAmt;     // Stores max amount, potentially from uint256 approval.maxAmt
-        uint40 expiry;      // Stores expiry, from uint256 approval.expiry (needs SafeCast)
-        bytes32 proofId;
-    }
-
-    /**
      * @notice Mapping from a composite key to a list of approvals.
      * @dev Key: keccak256(abi.encode(issuer_address, sender_address, recipient_address))
      *      Value: Array of approvals valid for this triplet.
      *      We store an array because multiple approvals (e.g., different amounts/expiries)
      *      can exist for the same sender/recipient pair, initiated by the same issuer.
      */
-    mapping(bytes32 => ApprovalStorage[]) private _approvals;
+    mapping(bytes32 => TransferApproval[]) private _approvals;
 
     /**
      * @notice Mapping to track used proof IDs to prevent replay attacks.
@@ -181,7 +164,7 @@ contract TransferOracle is ITransferOracle, Ownable, ReentrancyGuard {
             approval.recipient == address(0) ||
             approval.minAmt > approval.maxAmt ||
             approval.expiry <= block.timestamp ||
-            approval.expiry > type(uint40).max
+            approval.expiry > type(uint256).max
         ) {
             revert TransferOracle__InvalidApprovalData();
         }
@@ -206,12 +189,12 @@ contract TransferOracle is ITransferOracle, Ownable, ReentrancyGuard {
         // 8. Store the approval
         bytes32 key = keccak256(abi.encode(owner(), approval.sender, approval.recipient));
         _approvals[key].push(
-            ApprovalStorage({
+            TransferApproval({
                 sender: approval.sender,
                 recipient: approval.recipient,
-                minAmt: approval.minAmt.toUint128(),
-                maxAmt: approval.maxAmt.toUint128(),
-                expiry: approval.expiry.toUint40(),
+                minAmt: approval.minAmt,
+                maxAmt: approval.maxAmt,
+                expiry: approval.expiry,
                 proofId: approval.proofId
             })
         );
@@ -257,20 +240,19 @@ contract TransferOracle is ITransferOracle, Ownable, ReentrancyGuard {
         }
 
         bytes32 key = keccak256(abi.encode(owner(), sender, recipient));
-        ApprovalStorage[] storage approvalList = _approvals[key];
+        TransferApproval[] storage approvalList = _approvals[key];
         uint256 listLength = approvalList.length;
 
-        uint128 amount128 = amount.toUint128();
         uint256 bestApprovalIndex = type(uint256).max;
         uint256 smallestRange = type(uint256).max;
 
         for (uint256 i = 0; i < listLength; ++i) {
-            ApprovalStorage storage currentApproval = approvalList[i];
+            TransferApproval storage currentApproval = approvalList[i];
 
             if (currentApproval.expiry < block.timestamp) {
                 continue;
             }
-            if (amount128 >= currentApproval.minAmt && amount128 <= currentApproval.maxAmt) {
+            if (amount >= currentApproval.minAmt && amount <= currentApproval.maxAmt) {
                 uint256 currentRange = uint256(currentApproval.maxAmt) - uint256(currentApproval.minAmt);
                 if (currentRange < smallestRange) {
                     smallestRange = currentRange;
