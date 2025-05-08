@@ -1,4 +1,4 @@
-# EIP-XXXX: Permissioned ERC-20 Token
+# Oracle-Permissioned ERC-20 Transfers with ZK-Verified SWIFT ISO 20022 Payment Instructions
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
